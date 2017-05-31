@@ -225,51 +225,6 @@ func TestCrashAfterRevocation(t *testing.T) {
 	log.ErrFatal(c1.ProposeUpdate())
 }
 
-func TestVerificationFunction(t *testing.T) {
-	l := onet.NewTCPTest()
-	hosts, el, _ := l.GenTree(2, true)
-	services := l.GetServices(hosts, identityService)
-	s0 := services[0].(*Service)
-	defer l.CloseAll()
-	for _, s := range services {
-		log.Lvl3(s.(*Service).Identities)
-	}
-
-	c1 := NewTestIdentity(el, 50, "one1", l)
-	log.ErrFatal(c1.CreateIdentity())
-
-	// Hack: create own data-structure with twice our signature
-	// and send it directly to the skipblock. Without a proper
-	// verification-function, this should pass.
-	data2 := c1.Data.Copy()
-	kp2 := config.NewKeyPair(network.Suite)
-	data2.Device["two2"] = &Device{kp2.Public}
-	data2.Storage["two2"] = "public2"
-	hash, err := data2.Hash()
-	log.ErrFatal(err)
-	sig, err := crypto.SignSchnorr(network.Suite, kp2.Secret, hash)
-	log.ErrFatal(err)
-	data2.Votes["one1"] = &sig
-	data2.Votes["two2"] = &sig
-	id := s0.getIdentityStorage(c1.ID)
-	require.NotNil(t, id, "Didn't find identity")
-	_, cerr := s0.skipchain.StoreSkipBlock(id.SCData, nil, data2)
-	require.NotNil(t, cerr, "Skipchain accepted our fake block!")
-
-	// Unhack: verify that the correct way of doing it works, even if
-	// we bypass the identity.
-	sig, err = crypto.SignSchnorr(network.Suite, c1.Private, hash)
-	log.ErrFatal(err)
-	data2.Votes["one1"] = &sig
-	_, cerr = s0.skipchain.StoreSkipBlock(id.SCData, nil, data2)
-	log.ErrFatal(err)
-	log.ErrFatal(c1.DataUpdate())
-
-	if len(c1.Data.Device) != 2 {
-		t.Fatal("Should have two owners now")
-	}
-}
-
 func proposeUpVote(i *Identity) {
 	log.ErrFatal(i.ProposeUpdate())
 	log.ErrFatal(i.ProposeVote(true))
